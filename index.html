@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Blur Meter Demo</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body class="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+  <div class="w-full max-w-lg bg-white shadow-xl rounded-2xl p-6 space-y-6">
+    <h1 class="text-2xl font-semibold text-center">Image Blur Meter</h1>
+
+    <!-- File input -->
+    <label class="flex flex-col items-center justify-center w-full h-40 px-4 transition bg-white border-2 border-dashed rounded-lg cursor-pointer hover:border-indigo-500">
+      <span class="text-sm text-gray-500">Click here to upload an image</span>
+      <input id="uploader" type="file" accept="image/*" class="hidden">
+    </label>
+
+    <!-- Image preview -->
+    <div id="previewWrapper" class="hidden">
+      <img id="preview" alt="preview" class="mx-auto max-h-64 rounded-lg shadow-md"/>
+    </div>
+
+    <!-- Results -->
+    <div id="result" class="hidden space-y-3">
+      <p id="scoreText" class="text-center text-lg font-medium"></p>
+
+      <!-- Progress bar -->
+      <div class="w-full bg-gray-200 rounded-full h-4">
+        <div id="scoreBar" class="h-4 rounded-full transition-all duration-500"
+             style="width:0%"></div>
+      </div>
+
+      <p id="varianceText" class="text-center text-sm text-gray-500"></p>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import calibrated blurMeter (thresholdMin 9, thresholdMax 50)
+    import { blurMeter } from './js/blur-meter.js';
+
+    const uploader      = document.getElementById('uploader');
+    const preview       = document.getElementById('preview');
+    const previewWrap   = document.getElementById('previewWrapper');
+    const scoreText     = document.getElementById('scoreText');
+    const varianceText  = document.getElementById('varianceText');
+    const scoreBar      = document.getElementById('scoreBar');
+    const resultBlock   = document.getElementById('result');
+
+    // --- Helper to map score (1–10) to color gradient red → green ---
+    const scoreToColor = score => {
+      // Linear interpolation between red (rgb 220 38 38) and green (rgb 22 163 74)
+      const t  = (score - 1) / 9;                // 0 … 1
+      const r  = Math.round(220 + (22  - 220) * t);
+      const g  = Math.round( 38 + (163 -  38) * t);
+      const b  = Math.round( 38 + ( 74 -  38) * t);
+      return `rgb(${r},${g},${b})`;
+    };
+
+    // --- Main handler ---
+    uploader.addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // Show preview
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+      previewWrap.classList.remove('hidden');
+
+      // Wait for image to load before analysis
+      await new Promise(res => preview.onload = res);
+
+      // Compute sharpness score
+      const { score, variance } = await blurMeter(preview);
+
+      // Update UI
+      scoreText.textContent    = `Sharpness Score: ${score}/10`;
+      varianceText.textContent = `Laplacian variance: ${variance.toFixed(2)}`;
+      const percent            = ((score - 1) / 9) * 100;  // 0 – 100%
+      scoreBar.style.width     = percent + '%';
+      scoreBar.style.backgroundColor = scoreToColor(score);
+      resultBlock.classList.remove('hidden');
+
+      // Revoke object URL when done to free memory
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>
