@@ -1,77 +1,125 @@
-/**
- * blurMeter 1.0.3 – Evaluate image sharpness using Laplacian variance
- * Returns an integer from 1 (very blurry) to 10 (perfectly sharp).
- *
- * @param {HTMLImageElement|HTMLCanvasElement|HTMLVideoElement|ImageBitmap} source
- * @param {{thresholdMin?:number, thresholdMax?:number}=} opts
- * @return {Promise<{score:number, variance:number}>}
- *
- * USAGE EXAMPLE:
- *   import { blurMeter } from './js/blur-meter.js';
- *   const { score } = await blurMeter(img);
- */
-export async function blurMeter(source, opts = {}) {
-  // --- Calibrated defaults based on your empirical data (variance ≈ 9 … 50) ---
-  const T_min = opts.thresholdMin ?? 25;    // variance that maps to score 1
-  const T_max = opts.thresholdMax ?? 10000;   // variance that maps to score 10
 
-  /* ---------- 1. Prepare off-screen canvas ---------- */
-  const w = source.width  || source.videoWidth  || source.naturalWidth;
-  const h = source.height || source.videoHeight || source.naturalHeight;
-  if (!w || !h) throw new Error("Source has invalid dimensions");
+# Laplacian Blur Detector
 
-  // Use OffscreenCanvas when available; otherwise fall back to a hidden <canvas>
-  const off = typeof OffscreenCanvas === "function"
-    ? new OffscreenCanvas(w, h)
-    : (() => {
-        const c = document.createElement("canvas");
-        c.width = w; c.height = h;
-        return c;
-      })();
-  const ctx = off.getContext("2d");
-  ctx.drawImage(source, 0, 0, w, h);
-  const { data } = ctx.getImageData(0, 0, w, h); // Uint8ClampedArray RGBA
+📷 **blurMeter** is a compact JavaScript utility that measures image sharpness using the **Variance of Laplacian** algorithm.  
+It returns an intuitive **score from 1 (very blurry) to 10 (perfectly sharp)**, making it ideal for client-side validation, image quality control, or pre-processing for OCR and computer vision tasks.
 
-  /* ---------- 2. Convert to grayscale ---------- */
-  const gray = new Float32Array(w * h);
-  for (let i = 0, j = 0; i < data.length; i += 4, ++j) {
-    // Standard sRGB luminance conversion
-    gray[j] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+---
+
+## ✨ Features
+
+- ✅ Pure JavaScript – no dependencies
+- 📈 Laplacian-based blur detection (4-neighbor kernel)
+- 🔢 Returns a normalized **sharpness score [1–10]**
+- 🧠 Customizable threshold range
+- 🖼️ Supports `HTMLImageElement`, `HTMLVideoElement`, `HTMLCanvasElement`, and `ImageBitmap`
+- ⚡ Fast enough for real-time use
+
+---
+
+## 🚀 Installation
+
+You can use it directly in the browser or bundle it with your toolchain.
+
+### Browser (ESM)
+```html
+<script type="module">
+  import blurMeter from './js/blur-meter.js';
+
+  const img = document.querySelector('img');
+  const { score, variance } = await blurMeter(img);
+  console.log('Sharpness score:', score);
+</script>
+```
+
+### Node / Bundler
+```bash
+npm install your-repo-or-path
+```
+
+Then:
+```js
+import blurMeter from 'blur-meter';
+```
+
+---
+
+## 🔬 Algorithm
+
+**Variance of Laplacian** is a well-established method for blur detection. It computes a grayscale version of the image, applies a Laplacian filter (edge enhancement), and calculates the statistical variance of the result:
+
+```
+Sharpness ∝ Var( Laplacian( Grayscale(Image) ) )
+```
+
+This implementation uses a fast **4-neighbor Laplacian**:
+
+```
+L[x,y] = 4*I[x,y] - I[x-1,y] - I[x+1,y] - I[x,y-1] - I[x,y+1]
+```
+
+---
+
+## 📊 API
+
+```ts
+async function blurMeter(
+  source: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | ImageBitmap,
+  opts?: {
+    thresholdMin?: number, // variance mapped to score 1 (default: 25)
+    thresholdMax?: number  // variance mapped to score 10 (default: 10000)
   }
+): Promise<{ score: number, variance: number }>
+```
 
-  /* ---------- 3. Apply Laplacian (4-neighbor kernel) ---------- */
-  const lap = new Float32Array(w * h);
-  const idx = (x, y) => y * w + x;
-  for (let y = 1; y < h - 1; ++y) {
-    for (let x = 1; x < w - 1; ++x) {
-      const i = idx(x, y);
-      lap[i] =
-        4 * gray[i] -
-        gray[idx(x - 1, y)] -
-        gray[idx(x + 1, y)] -
-        gray[idx(x, y - 1)] -
-        gray[idx(x, y + 1)];
-    }
-  }
+### Example
+```js
+const img = document.querySelector('img');
+const { score, variance } = await blurMeter(img);
+console.log(`Score: ${score} (variance: ${variance.toFixed(2)})`);
+```
 
-  /* ---------- 4. Compute variance of Laplacian ---------- */
-  let sum = 0, sumSq = 0, count = (w - 2) * (h - 2);
-  for (let y = 1; y < h - 1; ++y) {
-    for (let x = 1; x < w - 1; ++x) {
-      const v = lap[idx(x, y)];
-      sum   += v;
-      sumSq += v * v;
-    }
-  }
-  const mean = sum / count;
-  const variance = (sumSq / count) - (mean * mean);
+---
 
-  /* ---------- 5. Map variance to 1-10 score ---------- */
-  const norm  = Math.max(0, Math.min(1, (variance - T_min) / (T_max - T_min)));
-  const score = Math.round(1 + 9 * norm);
+## 🎛️ Threshold tuning
 
-  return { score, variance };
-}
+| Use case | Suggested range |
+|----------|------------------|
+| Low-res camera preview (≤ 640px) | 10 – 150 |
+| HD photo (1280×720) | 25 – 200 |
+| OCR preprocessing | 30 – 300 |
+| General purpose | 25 – 10,000 (default) |
 
-/* ---------- Optional: default export for brace-less import ---------- */
-export default blurMeter;
+Adjust `thresholdMin` and `thresholdMax` to map the variance range to the score scale more meaningfully for your dataset.
+
+---
+
+## 📁 Project structure
+
+```
+blurMeter/
+├── js/
+│   └── blur-meter.js         # main implementation
+├── index.html            # test interface
+└── README.md
+```
+
+---
+
+## 🧠 Author
+
+**Simone Renzi**  
+Engineer, full-stack developer, founder of RENOR & Partners Srl  
+🌐 [simonerenzi.com](https://simonerenzi.com) • [renor.it](https://renor.it)
+
+---
+
+## 📝 License
+
+MIT License — free to use, modify and distribute.
+
+---
+
+## ⭐️ Support the Project
+
+If this helped your project, please **star** the repo or mention `blurMeter` in your credits! PRs and improvements are welcome.
