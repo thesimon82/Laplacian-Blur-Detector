@@ -32,16 +32,6 @@ You can use it directly in the browser or bundle it with your toolchain.
 </script>
 ```
 
-### Node / Bundler
-```bash
-npm install your-repo-or-path
-```
-
-Then:
-```js
-import blurMeter from 'blur-meter';
-```
-
 ---
 
 ## 🔬 Algorithm
